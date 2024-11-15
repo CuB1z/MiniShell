@@ -1,5 +1,7 @@
 # MiniShell 🚀
 
+Minishell is a simplified Unix/Linux shell built in C that emulates the behavior of a native terminal. It provides a functional command-line interface for executing commands, managing processes, and handling input/output.
+
 ## 📜 Credits
 
 | Name          | GitHub                                       | LinkedIn                                                    |
