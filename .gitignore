@@ -1,3 +1,7 @@
-# Compiled binary files
-/bin/*.*.o
-/bin/*.*.a
+# Ignore Linux executables
+*
+!*/
+!*.*
+
+# Ignore build output
+build/*
