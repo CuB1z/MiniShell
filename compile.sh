@@ -33,7 +33,7 @@ rm -f "$BUILD_DIR"/*
 
 # [Program Compilation] ========================================>>
 gcc -c -Wall -Werror main.c -o "$BUILD_DIR/main.o"
-gcc "$BUILD_DIR/main.o" "$BINARY_DIR/libparser.a" -o "$OUTPUT_DIR/main"
+gcc "$BUILD_DIR/main.o" "$BINARY_DIR/libparser.a" -o "$OUTPUT_DIR/main" -static
 
 if [ $? -ne 0 ]
 then
