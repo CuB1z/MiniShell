@@ -27,6 +27,7 @@ typedef struct {
 
 void printDebugData(int mode, tline * line);
 void readLine(char * line, int max);
+void redirectIO(tjob * job, int i);
 int isInputOk(tline * line);
 
 // ========================[ Global Variables ]=======================
@@ -91,15 +92,8 @@ int main(int argc, char * argv[]) {
 
             if (auxPid == 0) {
 
-                // Redirect input from previous pipe
-                if (i > 0) {
-                    dup2(jobs[current]->pipes[i - 1][0], STDIN_FILENO);
-                }
-
-                // Redirect output to next pipe
-                if (i < line->ncommands - 1) {
-                    dup2(jobs[current]->pipes[i][1], STDOUT_FILENO);
-                }
+                // Redirect input and output
+                redirectIO(jobs[current], i);
 
                 // Close all pipe file descriptors in child process
                 for (j = 0; j < line->ncommands - 1; j++) {
@@ -191,6 +185,35 @@ void printDebugData(int mode, tline * line) {
 void readLine(char * line, int max) {
     fprintf(stdout, PROMPT);
     fgets(line, max, stdin);
+}
+
+/**
+ * Redirects input and output for a given job
+ * 
+ * @param job Job to redirect
+ * @param i Index of the command
+ */
+void redirectIO(tjob * job, int i) {
+    tline * line = job->line;
+
+    // Redirect input from previous pipe or file
+    if (i > 0) {
+        dup2(job->pipes[i - 1][0], STDIN_FILENO);
+    } else if (line->redirect_input != NULL) {
+        freopen(line->redirect_input, "r", stdin);
+    }
+
+    // Redirect output to next pipe or file
+    if (i < line->ncommands - 1) {
+        dup2(job->pipes[i][1], STDOUT_FILENO);
+    } else if (line->redirect_output != NULL) {
+        freopen(line->redirect_output, "w", stdout);
+    }
+
+    // Redirect error to file
+    if (line->redirect_error != NULL) {
+        freopen(line->redirect_error, "w", stderr);
+    }
 }
 
 /**
