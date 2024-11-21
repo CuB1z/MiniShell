@@ -3,5 +3,8 @@
 !*/
 !*.*
 
+# Ignore tests folder
+tests/*
+
 # Ignore build output
 build/*
