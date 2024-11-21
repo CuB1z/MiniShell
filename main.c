@@ -20,7 +20,7 @@ typedef struct {
     int status;
     tline * line;
     pid_t pids[MAX_COMMANDS];
-    int * pipes[MAX_COMMANDS - 1];
+    int pipes[MAX_COMMANDS - 1][2];
 } tjob;
 
 // ===========================[ Prototypes ]==========================
@@ -35,9 +35,8 @@ tjob * jobs[MAX_PROCESSES];
 // ==============================[ Main ]=============================
 int main(int argc, char * argv[]) {
     tline * line;
-    int i, count = 0;
+    int i, j, count = 0;
     int current = 0;
-    int auxPipe[2];
     pid_t auxPid;
     char buffer[MAX_LINE];
 
@@ -78,8 +77,10 @@ int main(int argc, char * argv[]) {
 
         // Initialize pipes
         for (i = 0; i < line->ncommands - 1; i++) {
-            pipe(auxPipe);
-            jobs[current]->pipes[i] = auxPipe;
+            if (pipe(jobs[current]->pipes[i]) < 0) {
+                fprintf(stderr, "Error: pipe failed\n");
+                exit(EXIT_FAILURE);
+            }
         }
 
         // Create children
@@ -87,30 +88,21 @@ int main(int argc, char * argv[]) {
             auxPid = fork();
             jobs[current]->pids[i] = auxPid;
 
+
             if (auxPid == 0) {
-                // Redirect input/output if needed
 
-                // Redirect output for first command
-                if (i == 0 && line->ncommands > 1) {
-                    close(jobs[current]->pipes[i][0]);
-                    dup2(jobs[current]->pipes[i][1], STDOUT_FILENO);
-                    close(jobs[current]->pipes[i][1]);
-
-                // Redirect input and output for middle commands
-                } else if (i > 0 && i < line->ncommands - 1) {
+                // Redirect input from previous pipe
+                if (i > 0) {
                     dup2(jobs[current]->pipes[i - 1][0], STDIN_FILENO);
-                    close(jobs[current]->pipes[i - 1][0]);
-                    dup2(jobs[current]->pipes[i][1], STDOUT_FILENO);
-                    close(jobs[current]->pipes[i][1]);
-
-                // Redirect input for last command
-                } else if (i == line->ncommands - 1 && line->ncommands > 1) {
-                    dup2(jobs[current]->pipes[i - 1][0], STDIN_FILENO);
-                    close(jobs[current]->pipes[i - 1][0]);
                 }
 
-                // Close all pipes in the child process
-                for (int j = 0; j < line->ncommands - 1; j++) {
+                // Redirect output to next pipe
+                if (i < line->ncommands - 1) {
+                    dup2(jobs[current]->pipes[i][1], STDOUT_FILENO);
+                }
+
+                // Close all pipe file descriptors in child process
+                for (j = 0; j < line->ncommands - 1; j++) {
                     close(jobs[current]->pipes[j][0]);
                     close(jobs[current]->pipes[j][1]);
                 }
@@ -119,11 +111,15 @@ int main(int argc, char * argv[]) {
                 execvp(line->commands[i].filename, line->commands[i].argv);
                 fprintf(stderr,"Error: execvp failed");
                 exit(EXIT_FAILURE);
+                
+            } else if (auxPid < 0) {
+                fprintf(stderr, "Error: fork failed\n");
+                exit(EXIT_FAILURE);
             }
         }
 
         // Close all pipes in the parent process
-        for (int i = 0; i < line->ncommands - 1; i++) {
+        for (i = 0; i < line->ncommands - 1; i++) {
             close(jobs[current]->pipes[i][0]);
             close(jobs[current]->pipes[i][1]);
         }
@@ -138,6 +134,13 @@ int main(int argc, char * argv[]) {
             }
         }
     }
+
+    // Free memory
+    for (i = 0; i < MAX_PROCESSES; i++) {
+        free(jobs[i]);
+    }
+
+    return 0;
 }
 
 // ===========================[ Functions ]===========================
