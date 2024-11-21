@@ -94,29 +94,38 @@ int main(int argc, char * argv[]) {
                 if (i == 0 && line->ncommands > 1) {
                     close(jobs[current]->pipes[i][0]);
                     dup2(jobs[current]->pipes[i][1], STDOUT_FILENO);
+                    close(jobs[current]->pipes[i][1]);
 
                 // Redirect input and output for middle commands
                 } else if (i > 0 && i < line->ncommands - 1) {
                     dup2(jobs[current]->pipes[i - 1][0], STDIN_FILENO);
+                    close(jobs[current]->pipes[i - 1][0]);
                     dup2(jobs[current]->pipes[i][1], STDOUT_FILENO);
+                    close(jobs[current]->pipes[i][1]);
 
-                // Redirect output for last command
+                // Redirect input for last command
                 } else if (i == line->ncommands - 1 && line->ncommands > 1) {
-                    close(jobs[current]->pipes[i - 1][1]);
                     dup2(jobs[current]->pipes[i - 1][0], STDIN_FILENO);
+                    close(jobs[current]->pipes[i - 1][0]);
                 }
 
-                // Close pipes
-                for (i = 0; i < line->ncommands - 1; i++) {
-                    close(jobs[current]->pipes[i][0]);
-                    close(jobs[current]->pipes[i][1]);
+                // Close all pipes in the child process
+                for (int j = 0; j < line->ncommands - 1; j++) {
+                    close(jobs[current]->pipes[j][0]);
+                    close(jobs[current]->pipes[j][1]);
                 }
 
                 // Execute command
                 execvp(line->commands[i].filename, line->commands[i].argv);
-                
-                exit(1);
+                fprintf(stderr,"Error: execvp failed");
+                exit(EXIT_FAILURE);
             }
+        }
+
+        // Close all pipes in the parent process
+        for (int i = 0; i < line->ncommands - 1; i++) {
+            close(jobs[current]->pipes[i][0]);
+            close(jobs[current]->pipes[i][1]);
         }
 
         for (i = 0; i < line->ncommands; i++) {
@@ -179,7 +188,6 @@ void printDebugData(int mode, tline * line) {
 void readLine(char * line, int max) {
     fprintf(stdout, PROMPT);
     fgets(line, max, stdin);
-    fprintf(stdout, "\n");
 }
 
 /**
