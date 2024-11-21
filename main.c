@@ -82,21 +82,45 @@ int main(int argc, char * argv[]) {
             jobs[current]->pipes[i] = auxPipe;
         }
 
+        // Create children
         for (i = 0; i < line->ncommands; i++) {
             auxPid = fork();
             jobs[current]->pids[i] = auxPid;
 
             if (auxPid == 0) {
-                exit(0);
+                // Redirect input/output if needed
+
+                // Redirect output for first command
+                if (i == 0 && line->ncommands > 1) {
+                    close(jobs[current]->pipes[i][0]);
+                    dup2(jobs[current]->pipes[i][1], STDOUT_FILENO);
+
+                // Redirect input and output for middle commands
+                } else if (i > 0 && i < line->ncommands - 1) {
+                    dup2(jobs[current]->pipes[i - 1][0], STDIN_FILENO);
+                    dup2(jobs[current]->pipes[i][1], STDOUT_FILENO);
+
+                // Redirect output for last command
+                } else if (i == line->ncommands - 1 && line->ncommands > 1) {
+                    close(jobs[current]->pipes[i - 1][1]);
+                    dup2(jobs[current]->pipes[i - 1][0], STDIN_FILENO);
+                }
+
+                // Close pipes
+                for (i = 0; i < line->ncommands - 1; i++) {
+                    close(jobs[current]->pipes[i][0]);
+                    close(jobs[current]->pipes[i][1]);
+                }
+
+                // Execute command
+                execvp(line->commands[i].filename, line->commands[i].argv);
+                
+                exit(1);
             }
         }
 
-        printf("Created %d children\n", line->ncommands);
-        printf("Waiting for children\n");
-
         for (i = 0; i < line->ncommands; i++) {
             auxPid = jobs[current]->pids[i];
-            kill(auxPid, SIGUSR1);
 
             if (line->background == 0) {
                 waitpid(auxPid, NULL, 0);
@@ -104,8 +128,6 @@ int main(int argc, char * argv[]) {
                 waitpid(auxPid, NULL, WNOHANG);
             }
         }
-
-        printf("Children finished\n");
     }
 }
 
