@@ -36,7 +36,7 @@ tjob * jobs[MAX_PROCESSES];
 // ==============================[ Main ]=============================
 int main(int argc, char * argv[]) {
     tline * line;
-    int i, j, count = 0;
+    int i, count = 0;
     int current = 0;
     pid_t auxPid;
     char buffer[MAX_LINE];
@@ -94,12 +94,6 @@ int main(int argc, char * argv[]) {
 
                 // Redirect input and output
                 redirectIO(jobs[current], i);
-
-                // Close all pipe file descriptors in child process
-                for (j = 0; j < line->ncommands - 1; j++) {
-                    close(jobs[current]->pipes[j][0]);
-                    close(jobs[current]->pipes[j][1]);
-                }
 
                 // Execute command
                 execvp(line->commands[i].filename, line->commands[i].argv);
@@ -194,6 +188,7 @@ void readLine(char * line, int max) {
  * @param i Index of the command
  */
 void redirectIO(tjob * job, int i) {
+    int j;
     tline * line = job->line;
 
     // Redirect input from previous pipe or file
@@ -213,6 +208,12 @@ void redirectIO(tjob * job, int i) {
     // Redirect error to file
     if (line->redirect_error != NULL) {
         freopen(line->redirect_error, "w", stderr);
+    }
+
+    // Close all pipe file descriptors
+    for (j = 0; j < line->ncommands - 1; j++) {
+        close(job->pipes[j][0]);
+        close(job->pipes[j][1]);
     }
 }
 
