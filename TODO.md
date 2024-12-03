@@ -2,11 +2,11 @@
 - [X] Ejecutar en foreground líneas con un solo mandato y 0 o más argumentos, redirección de entrada desde archivo y redirección de salida a archivo. (1 punto)
 - [X] Ejecutar en foreground líneas con dos mandatos con sus respectivos argumentos, enlazados con ‘|’, y posible redirección de entrada desde archivo y redirección de salida a archivo. (1 punto)
 - [X] Ejecutar en foreground líneas con más de dos mandatos con sus respectivos argumentos, enlazados con ‘|’, redirección de entrada desde archivo y redirección de salida a archivo. (2,5 puntos)
-- [ ] Ejecutar el mandato `cd` (0,5 puntos). Este mandato debe permitir:
-    - Acceso a través de rutas absolutas y relativas.
-    - Acceso al directorio especificado en la variable HOME si no recibe ningún argumento.
-    - Escribir la ruta absoluta del nuevo directorio actual de trabajo.
-    - Ejecutarse sin pipes.
+- [X] Ejecutar el mandato `cd` (0,5 puntos). Este mandato debe permitir:
+    - [X] Acceso a través de rutas absolutas y relativas.
+    - [X] Acceso al directorio especificado en la variable HOME si no recibe ningún argumento.
+    - [?] Escribir la ruta absoluta del nuevo directorio actual de trabajo. --> Preguntar
+    - [X] Ejecutarse sin pipes.
 - [ ] Ejecutar tanto en foreground como en background líneas con más de dos mandatos con sus respectivos argumentos, enlazados con ‘|’, redirección de entrada desde archivo y redirección de salida a archivo. Para su correcta demostración, se deben realizar los mandatos internos `jobs` y `bg` (2 puntos):
     - `jobs`: Muestra la lista de trabajos que se están ejecutando en segundo plano o que han sido parados con la señal SIGTSTP (CTRL+Z). El formato de salida será similar al del mandato `jobs` del sistema:
         - `[1]+  Running                 find / -name hola | grep h &`
