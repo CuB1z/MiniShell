@@ -27,6 +27,7 @@ typedef struct {
     tline * line;
     pid_t pids[MAX_COMMANDS];
     int pipes[MAX_COMMANDS - 1][2];
+    char * command;
 } tjob;
 
 // ===========================[ Prototypes ]==========================
@@ -35,11 +36,12 @@ void printDebugData(int mode, tline * line);
 void readLine(char * line, int max);
 void redirectIO(tjob * job, int i);
 int isInputOk(tline * line);
-int externalCommand(tline * line);
+int externalCommand(tline * line, char* command);
 int changeDirectory(char * path);
 void umaskCommand(char * mask);
 
 void ctrlC(int sig);
+void ctrlZ(int sig);
 
 // ========================[ Global Variables ]=======================
 tjob * jobs[MAX_PROCESSES];
@@ -60,6 +62,7 @@ int main(int argc, char * argv[]) {
 
     // Set signal handlers
     signal(SIGINT, ctrlC);
+    signal(SIGTSTP, ctrlZ);
     
     // Clear screen at the beginning
     system("clear");
@@ -92,7 +95,7 @@ int main(int argc, char * argv[]) {
             umaskCommand(line->commands[0].argv[1]);
 
         } else {
-            externalCommand(line);
+            externalCommand(line, buffer);
         }
     }
 
@@ -296,7 +299,7 @@ void umaskCommand(char * mask) {
  * @param line Parsed line to execute
  * @return 0 if successful, -1 if failed
  */
-int externalCommand(tline * line) {
+int externalCommand(tline * line, char* command) {
     int i, current;
     pid_t pid;
 
@@ -305,6 +308,7 @@ int externalCommand(tline * line) {
         if (jobs[i]->id == -1 || jobs[i]->status == 0) {
             jobs[i]->id = count++;
             jobs[i]->line = line;
+            jobs[i]->command = command;
             break;
         }
     }
@@ -325,7 +329,7 @@ int externalCommand(tline * line) {
         jobs[current]->pids[i] = pid;
 
         if (pid == 0) {
-
+    
             // Redirect input and output
             redirectIO(jobs[current], i);
 
@@ -376,6 +380,29 @@ void ctrlC(int sig) {
                 pid = jobs[i]->pids[j];
                 kill(pid, SIGKILL);
             }
+        }
+    }
+}
+
+/**
+ * Handles the SIGTSTP signal (Ctrl+Z)
+ * 
+ * @param sig Signal number
+ */
+void ctrlZ(int sig){
+    int i, j, count = 0;
+    pid_t pid;
+
+    for (i = 0; i < MAX_PROCESSES; i++) {
+        if (jobs[i]->id != -1 && jobs[i]->line->background == 0) {
+            count++;
+            jobs[i]->line->background = 1;
+            fprintf(stdout, "[%d]+ Stopped\t %s\n", count, jobs[i]->command);
+            for (j = 0; j < jobs[i]->line->ncommands; j++) {
+                pid = jobs[i]->pids[j];
+                kill(pid, SIGSTOP);
+            }
+            
         }
     }
 }
