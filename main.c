@@ -12,7 +12,12 @@
 #define MAX_LINE 80
 #define MAX_COMMANDS 20
 #define MAX_PROCESSES 20
-#define DEBUG_MODE 1
+
+#ifdef DEBUG
+    #define DEBUG_MODE 1
+#else
+    #define DEBUG_MODE 0
+#endif
 
 // ===========================[ Structures ]==========================
 typedef struct {
