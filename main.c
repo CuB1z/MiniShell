@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 
 #include "parser.h"
 
@@ -36,6 +37,7 @@ void redirectIO(tjob * job, int i);
 int isInputOk(tline * line);
 int externalCommand(tline * line);
 int changeDirectory(char * path);
+void umaskCommand(char * mask);
 
 // ========================[ Global Variables ]=======================
 tjob * jobs[MAX_PROCESSES];
@@ -78,8 +80,11 @@ int main(int argc, char * argv[]) {
         if (strcmp(line->commands[0].argv[0], "cd") == 0) {
             changeDirectory(line->commands[0].argv[1]);
 
-        } else if (strcmp(line->commands[0].filename, "exit") == 0) {
+        } else if (strcmp(line->commands[0].argv[0], "exit") == 0) {
             break;
+
+        } else if (strcmp(line->commands[0].argv[0], "umask") == 0) {
+            umaskCommand(line->commands[0].argv[1]);
 
         } else {
             externalCommand(line);
@@ -227,6 +232,11 @@ int isInputOk(tline * line) {
         return 1;
     }
 
+    // Handle umask command
+    if (strcmp(line->commands[0].argv[0], "umask") == 0) {
+        return 1;
+    }
+
     // Handle external commands
     for (i = 0; i < line->ncommands; i++) {
         if (line->commands[i].filename == NULL) {
@@ -253,6 +263,26 @@ int changeDirectory(char * path) {
     }
 
     return chdir(dir);
+}
+
+/**
+ * Executes the umask command
+ * @param mask Mask to set
+ */
+void umaskCommand(char * mask) {
+    mode_t mode;
+
+    // Output current mask if no mask is provided
+    if (mask == NULL) {
+        mode = umask(0);
+        umask(mode);
+        fprintf(stdout, "%04o\n", mode);
+
+    // Set new mask if provided
+    } else {
+        mode = strtol(mask, NULL, 8);
+        umask(mode);
+    }
 }
 
 /**
