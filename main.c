@@ -37,6 +37,8 @@ int isInputOk(tline * line);
 int externalCommand(tline * line);
 int changeDirectory(char * path);
 
+void ctrlC(int sig);
+
 // ========================[ Global Variables ]=======================
 tjob * jobs[MAX_PROCESSES];
 int count = 0;
@@ -54,6 +56,9 @@ int main(int argc, char * argv[]) {
         jobs[i]->line = NULL;
     }
 
+    // Set signal handlers
+    signal(SIGINT, ctrlC);
+    
     // Clear screen at the beginning
     system("clear");
 
@@ -322,4 +327,25 @@ int externalCommand(tline * line) {
     }
     
     return 0;
+}
+
+// ===========================[ Signal Handlers ]==========================
+
+/**
+ * Handles the SIGINT signal (Ctrl+C)
+ * 
+ * @param sig Signal number
+ */
+void ctrlC(int sig) {
+    int i, j;
+    pid_t pid;
+
+    for (i = 0; i < MAX_PROCESSES; i++) {
+        if (jobs[i]->id != -1) {
+            for (j = 0; j < jobs[i]->line->ncommands; j++) {
+                pid = jobs[i]->pids[j];
+                kill(pid, SIGKILL);
+            }
+        }
+    }
 }
