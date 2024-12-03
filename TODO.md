@@ -12,6 +12,7 @@
         - `[1]+  Running                 find / -name hola | grep h &`
         - `[2]-  Stopped                 sleep 140`
     - `bg`: Reanuda la ejecución de un job que se paró con CTRL+Z (SIGTSTP). Si se le pasa un identificador, dicho job se reanuda en background. Si no se le pasa ningún identificador, se pasa a background el último trabajo que se paró. Si no existe ningún trabajo parado, no se reanuda nada.
+- [X] Modificar Ctrl+C para que no mate la minishell, sino que mate el proceso que se esté ejecutando 
 - [ ] Evitar que los comandos lanzados en background y el minishell mueran al enviar la señal SIGINT desde el teclado, mientras los procesos en foreground respondan ante ella. La minishell deberá mostrar una nueva línea y un nuevo prompt cuando reciba dicha señal. Evitar que la minishell se pare cuando se envíe la señal SIGTSTP desde el teclado: debe capturarla y procesarla para parar los procesos que estén ejecutándose en ese momento en foreground, si hubiera alguno. (1 punto)
 - [ ] Ejecutar el mandato `exit` (0,5 puntos). Este mandato interno termina la minishell de manera ordenada y muestra el prompt de la Shell desde dónde se ejecutó.
 - [ ] Ejecutar el mandato `umask` (1 punto). Este mandato se utiliza para establecer los permisos por defecto para ficheros nuevos. Debe aceptar un número octal (por ejemplo, 0174). Si se ejecuta sin argumentos debe mostrar la máscara actual y no debe poder ejecutarse con pipes.
