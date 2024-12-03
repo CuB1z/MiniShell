@@ -2,17 +2,17 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
+#include <string.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 
 #include "parser.h"
 
 // ===========================[ Constants ]===========================
-#define PROMPT "$msh> "
 #define MAX_LINE 80
 #define MAX_COMMANDS 20
 #define MAX_PROCESSES 20
-#define DEBUG_MODE 0
+#define DEBUG_MODE 1
 
 // ===========================[ Structures ]==========================
 typedef struct {
@@ -29,16 +29,17 @@ void printDebugData(int mode, tline * line);
 void readLine(char * line, int max);
 void redirectIO(tjob * job, int i);
 int isInputOk(tline * line);
+int externalCommand(tline * line);
+int changeDirectory(char * path);
 
 // ========================[ Global Variables ]=======================
 tjob * jobs[MAX_PROCESSES];
+int count = 0;
 
 // ==============================[ Main ]=============================
 int main(int argc, char * argv[]) {
     tline * line;
-    int i, count = 0;
-    int current = 0;
-    pid_t auxPid;
+    int i;
     char buffer[MAX_LINE];
 
     // Initialize jobs
@@ -47,6 +48,9 @@ int main(int argc, char * argv[]) {
         jobs[i]->id = -1;
         jobs[i]->line = NULL;
     }
+
+    // Clear screen at the beginning
+    system("clear");
 
     // Main loop
     while (1) {
@@ -65,61 +69,15 @@ int main(int argc, char * argv[]) {
             continue;
         }
 
-        // Get available job slot
-        for (i = 0; i < MAX_PROCESSES; i++) {
-            if (jobs[i]->id == -1 || jobs[i]->status == 0) {
-                jobs[i]->id = count++;
-                jobs[i]->line = line;
-                break;
-            }
-        }
+        // Handle commands
+        if (strcmp(line->commands[0].argv[0], "cd") == 0) {
+            changeDirectory(line->commands[0].argv[1]);
 
-        current = i;
+        } else if (strcmp(line->commands[0].filename, "exit") == 0) {
+            break;
 
-        // Initialize pipes
-        for (i = 0; i < line->ncommands - 1; i++) {
-            if (pipe(jobs[current]->pipes[i]) < 0) {
-                fprintf(stderr, "Error: pipe failed\n");
-                exit(EXIT_FAILURE);
-            }
-        }
-
-        // Create children
-        for (i = 0; i < line->ncommands; i++) {
-            auxPid = fork();
-            jobs[current]->pids[i] = auxPid;
-
-
-            if (auxPid == 0) {
-
-                // Redirect input and output
-                redirectIO(jobs[current], i);
-
-                // Execute command
-                execvp(line->commands[i].filename, line->commands[i].argv);
-                fprintf(stderr,"Error: execvp failed");
-                exit(EXIT_FAILURE);
-                
-            } else if (auxPid < 0) {
-                fprintf(stderr, "Error: fork failed\n");
-                exit(EXIT_FAILURE);
-            }
-        }
-
-        // Close all pipes in the parent process
-        for (i = 0; i < line->ncommands - 1; i++) {
-            close(jobs[current]->pipes[i][0]);
-            close(jobs[current]->pipes[i][1]);
-        }
-
-        for (i = 0; i < line->ncommands; i++) {
-            auxPid = jobs[current]->pids[i];
-
-            if (line->background == 0) {
-                waitpid(auxPid, NULL, 0);
-            } else {
-                waitpid(auxPid, NULL, WNOHANG);
-            }
+        } else {
+            externalCommand(line);
         }
     }
 
@@ -177,7 +135,26 @@ void printDebugData(int mode, tline * line) {
  * @return Number of characters read
  */
 void readLine(char * line, int max) {
-    fprintf(stdout, PROMPT);
+    char * customPrompt, * cwd, * username;
+    int len;
+
+    // Get username
+    username = getenv("USER");
+
+    // Get current working directory
+    cwd = getcwd(NULL, 0);
+
+    // Get home subdirectory
+    if (strstr(cwd, getenv("HOME")) != NULL) {
+        len = strlen(getenv("HOME"));
+        cwd += len;
+        customPrompt = "%s@msh: ~%s $> ";
+    } else {
+        customPrompt = "%s@msh: %s $> ";
+    }
+
+    // Print custom prompt
+    fprintf(stdout, customPrompt, username, cwd);
     fgets(line, max, stdin);
 }
 
@@ -230,6 +207,22 @@ int isInputOk(tline * line) {
         return 0;
     }
 
+    // Handle cd command
+    if (strcmp(line->commands[0].argv[0], "cd") == 0) {
+        return 1;
+    }
+
+    // Handle exit command
+    if (strcmp(line->commands[0].argv[0], "exit") == 0) {
+        return 1;
+    }
+
+    // Handle jobs command
+    if (strcmp(line->commands[0].argv[0], "jobs") == 0) {
+        return 1;
+    }
+
+    // Handle external commands
     for (i = 0; i < line->ncommands; i++) {
         if (line->commands[i].filename == NULL) {
             return -1;
@@ -237,4 +230,91 @@ int isInputOk(tline * line) {
     }
 
     return 1;
+}
+
+/**
+ * Changes the current working directory
+ * 
+ * @param path Path to change to (NULL for home directory)
+ * @return 0 if successful, -1 if failed
+ */
+int changeDirectory(char * path) {
+    char * dir;
+
+    if (path == NULL) {
+        dir = getenv("HOME");
+    } else {
+        dir = path;
+    }
+
+    return chdir(dir);
+}
+
+/**
+ * Executes an external command from a parsed line
+ * 
+ * @param line Parsed line to execute
+ * @return 0 if successful, -1 if failed
+ */
+int externalCommand(tline * line) {
+    int i, current;
+    pid_t pid;
+
+    // Get available job slot
+    for (i = 0; i < MAX_PROCESSES; i++) {
+        if (jobs[i]->id == -1 || jobs[i]->status == 0) {
+            jobs[i]->id = count++;
+            jobs[i]->line = line;
+            break;
+        }
+    }
+
+    current = i;
+
+    // Initialize pipes
+    for (i = 0; i < line->ncommands - 1; i++) {
+        if (pipe(jobs[current]->pipes[i]) < 0) {
+            fprintf(stderr, "Error: pipe failed\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Create children
+    for (i = 0; i < line->ncommands; i++) {
+        pid = fork();
+        jobs[current]->pids[i] = pid;
+
+        if (pid == 0) {
+
+            // Redirect input and output
+            redirectIO(jobs[current], i);
+
+            // Execute command
+            execvp(line->commands[i].filename, line->commands[i].argv);
+            fprintf(stderr,"Error: execvp failed");
+            exit(EXIT_FAILURE);
+            
+        } else if (pid < 0) {
+            fprintf(stderr, "Error: fork failed\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Close all pipes in the parent process
+    for (i = 0; i < line->ncommands - 1; i++) {
+        close(jobs[current]->pipes[i][0]);
+        close(jobs[current]->pipes[i][1]);
+    }
+
+    for (i = 0; i < line->ncommands; i++) {
+        pid = jobs[current]->pids[i];
+
+        if (line->background == 0) {
+            waitpid(pid, NULL, 0);
+        } else {
+            waitpid(pid, NULL, WNOHANG);
+        }
+    }
+    
+    return 0;
 }
