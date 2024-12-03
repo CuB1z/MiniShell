@@ -341,7 +341,7 @@ void ctrlC(int sig) {
     pid_t pid;
 
     for (i = 0; i < MAX_PROCESSES; i++) {
-        if (jobs[i]->id != -1) {
+        if (jobs[i]->id != -1 && jobs[i]->line->background == 0) {
             for (j = 0; j < jobs[i]->line->ncommands; j++) {
                 pid = jobs[i]->pids[j];
                 kill(pid, SIGKILL);
