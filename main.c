@@ -38,6 +38,7 @@ int isInputOk(tline * line);
 int externalCommand(tline * line, char* command);
 int changeDirectory(char * path);
 void umaskCommand(char * mask);
+void jobsCommand();
 void initializeJob(tjob * job);
 int addJob(tline * line, char * command);
 
@@ -93,6 +94,9 @@ int main(int argc, char * argv[]) {
 
         } else if (strcmp(line->commands[0].argv[0], "umask") == 0) {
             umaskCommand(line->commands[0].argv[1]);
+
+        } else if (strcmp(line->commands[0].argv[0], "jobs") == 0) {
+            jobsCommand();
 
         } else {
             externalCommand(line, buffer);
@@ -294,6 +298,21 @@ void umaskCommand(char * mask) {
 }
 
 /**
+ * Executes the jobs command
+ */
+void jobsCommand() {
+    int i, j;
+    pid_t pid;
+    char * status;
+
+    for (i = 0; i < MAX_COMMANDS; i++) {
+        if (jobs[i]->id != -1 && jobs[i]->status == 1) {
+            fprintf(stdout, "[%d] %s\t %s\n", jobs[i]->id, status, jobs[i]->command);
+        }
+    }
+}
+
+/**
  * Executes an external command from a parsed line
  * 
  * @param line Parsed line to execute
@@ -442,7 +461,7 @@ void ctrlZ(int sig){
         if (jobs[i]->id != -1 && jobs[i]->line->background == 0) {
             count++;
             jobs[i]->line->background = 1;
-            fprintf(stdout, "[%d]+ Stopped\t %s\n", count, jobs[i]->command);
+            fprintf(stdout, "\n[%d]+ Stopped\t %s\n", count, jobs[i]->command);
             for (j = 0; j < jobs[i]->line->ncommands; j++) {
                 pid = jobs[i]->pids[j];
                 kill(pid, SIGSTOP);
