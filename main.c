@@ -12,7 +12,6 @@
 // ===========================[ Constants ]===========================
 #define MAX_LINE 80
 #define MAX_COMMANDS 20
-#define MAX_PROCESSES 20
 
 #ifdef DEBUG
     #define DEBUG_MODE 1
@@ -25,8 +24,8 @@ typedef struct {
     int id;
     int status;
     tline * line;
-    pid_t pids[MAX_COMMANDS];
-    int pipes[MAX_COMMANDS - 1][2];
+    pid_t * pids;
+    int ** pipes;
     char * command;
 } tjob;
 
@@ -39,12 +38,14 @@ int isInputOk(tline * line);
 int externalCommand(tline * line, char* command);
 int changeDirectory(char * path);
 void umaskCommand(char * mask);
+void initializeJob(tjob * job);
+int addJob(tline * line, char * command);
 
 void ctrlC(int sig);
 void ctrlZ(int sig);
 
 // ========================[ Global Variables ]=======================
-tjob * jobs[MAX_PROCESSES];
+tjob * jobs[MAX_COMMANDS];
 int count = 0;
 
 // ==============================[ Main ]=============================
@@ -54,10 +55,9 @@ int main(int argc, char * argv[]) {
     char buffer[MAX_LINE];
 
     // Initialize jobs
-    for (i = 0; i < MAX_PROCESSES; i++) {
+    for (i = 0; i < MAX_COMMANDS; i++) {
         jobs[i] = (tjob *) malloc(sizeof(tjob));
-        jobs[i]->id = -1;
-        jobs[i]->line = NULL;
+        initializeJob(jobs[i]);
     }
 
     // Set signal handlers
@@ -100,7 +100,7 @@ int main(int argc, char * argv[]) {
     }
 
     // Free memory
-    for (i = 0; i < MAX_PROCESSES; i++) {
+    for (i = 0; i < MAX_COMMANDS; i++) {
         free(jobs[i]);
     }
 
@@ -303,17 +303,11 @@ int externalCommand(tline * line, char* command) {
     int i, current;
     pid_t pid;
 
-    // Get available job slot
-    for (i = 0; i < MAX_PROCESSES; i++) {
-        if (jobs[i]->id == -1 || jobs[i]->status == 0) {
-            jobs[i]->id = count++;
-            jobs[i]->line = line;
-            jobs[i]->command = command;
-            break;
-        }
-    }
+    // Add job to the jobs array
+    current = addJob(line, command);
 
-    current = i;
+    // Check error when adding job
+    if (current == -1) return -1;
 
     // Initialize pipes
     for (i = 0; i < line->ncommands - 1; i++) {
@@ -363,6 +357,57 @@ int externalCommand(tline * line, char* command) {
     return 0;
 }
 
+/**
+ * Initializes a job structure
+ * 
+ * @param job Job to initialize
+ */
+void initializeJob(tjob * job) {
+    job->id = -1;
+    job->status = 0;
+    job->line = NULL;
+    job->pids = (pid_t *) malloc(sizeof(pid_t));
+    job->pipes = (int **) malloc(sizeof(int *));
+}
+
+/*
+ * Adds a job to the jobs array
+ *
+ * @param line Parsed line to add
+ * @param command Command string
+ * @return Index of the job in the array, -1 if failed
+ */
+int addJob(tline * line, char * command) {
+    int i, j, updated = 0;
+
+    for (i = 0; i < MAX_COMMANDS; i++) {
+        if (jobs[i]->id == -1 || jobs[i]->status == 0) {
+            jobs[i]->id = count++;
+            jobs[i]->line = line;
+            jobs[i]->command = command;
+            jobs[i]->status = 1;
+            jobs[i]->pids = (pid_t *) realloc(jobs[i]->pids, sizeof(pid_t) * line->ncommands);
+            jobs[i]->pipes = (int **) realloc(jobs[i]->pipes, sizeof(int *) * (line->ncommands - 1));
+
+            // Allocate memory for pipes
+            for (j = 0; j < line->ncommands - 1; j++) {
+                jobs[i]->pipes[j] = (int *) malloc(sizeof(int) * 2);
+            }
+
+            updated = 1;
+            break;
+        }
+    }
+
+    // Return error if no slots are available
+    if (updated == 0) {
+        fprintf(stderr, "Error: Maximum number of commands reached\n");
+        return -1;
+    }
+
+    return i;
+}
+
 // ===========================[ Signal Handlers ]==========================
 
 /**
@@ -374,7 +419,7 @@ void ctrlC(int sig) {
     int i, j;
     pid_t pid;
 
-    for (i = 0; i < MAX_PROCESSES; i++) {
+    for (i = 0; i < MAX_COMMANDS; i++) {
         if (jobs[i]->id != -1 && jobs[i]->line->background == 0) {
             for (j = 0; j < jobs[i]->line->ncommands; j++) {
                 pid = jobs[i]->pids[j];
@@ -393,7 +438,7 @@ void ctrlZ(int sig){
     int i, j, count = 0;
     pid_t pid;
 
-    for (i = 0; i < MAX_PROCESSES; i++) {
+    for (i = 0; i < MAX_COMMANDS; i++) {
         if (jobs[i]->id != -1 && jobs[i]->line->background == 0) {
             count++;
             jobs[i]->line->background = 1;
