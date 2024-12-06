@@ -11,7 +11,7 @@
 
 // ===========================[ Constants ]===========================
 #define MAX_LINE 80
-#define MAX_COMMANDS 20
+#define MAX_COMMANDS 5
 
 #ifdef DEBUG
     #define DEBUG_MODE 1
@@ -20,6 +20,17 @@
 #endif
 
 // ===========================[ Structures ]==========================
+
+/**
+ * Job structure
+ * 
+ * @param id: Job ID
+ * @param status: Job status (0: Stopped, 1: Running)
+ * @param line: Parsed line
+ * @param pids: Array of process IDs
+ * @param pipes: Array of pipes
+ * @param command: Command string
+ */
 typedef struct {
     int id;
     int status;
@@ -31,6 +42,7 @@ typedef struct {
 
 // ===========================[ Prototypes ]==========================
 
+// Functions
 void printDebugData(int mode, tline * line);
 void readLine(char * line, int max);
 void redirectIO(tjob * job, int i);
@@ -39,15 +51,23 @@ int externalCommand(tline * line, char* command);
 int changeDirectory(char * path);
 void umaskCommand(char * mask);
 void jobsCommand();
+void bgCommand(char * job_id);
 void initializeJob(tjob * job);
 int addJob(tline * line, char * command);
 
+// Signal handlers
 void ctrlC(int sig);
 void ctrlZ(int sig);
+void terminatedChildHandler(int sig);
+
+// Utilities
+int getRunningJobIndex();
 
 // ========================[ Global Variables ]=======================
 tjob * jobs[MAX_COMMANDS];
-int count = 0;
+int stoppedJobs[MAX_COMMANDS];
+int lastStoppedJob = -1;
+int count = 0, bgJobs = 0;
 
 // ==============================[ Main ]=============================
 int main(int argc, char * argv[]) {
@@ -61,9 +81,18 @@ int main(int argc, char * argv[]) {
         initializeJob(jobs[i]);
     }
 
+    // Initialize stopped jobs
+    for (i = 0; i < MAX_COMMANDS; i++) {
+        stoppedJobs[i] = -1;
+    }
+
     // Set signal handlers
     signal(SIGINT, ctrlC);
     signal(SIGTSTP, ctrlZ);
+
+    // Set signal handlers for child processes
+    signal(SIGCHLD, terminatedChildHandler);
+    
     
     // Clear screen at the beginning
     system("clear");
@@ -97,6 +126,9 @@ int main(int argc, char * argv[]) {
 
         } else if (strcmp(line->commands[0].argv[0], "jobs") == 0) {
             jobsCommand();
+
+        } else if (strcmp(line->commands[0].argv[0], "bg") == 0) {
+            bgCommand(line->commands[0].argv[1]);
 
         } else {
             externalCommand(line, buffer);
@@ -249,6 +281,11 @@ int isInputOk(tline * line) {
         return 1;
     }
 
+    // Handle bg command
+    if (strcmp(line->commands[0].argv[0], "bg") == 0) {
+        return 1;
+    }
+
     // Handle external commands
     for (i = 0; i < line->ncommands; i++) {
         if (line->commands[i].filename == NULL) {
@@ -301,16 +338,48 @@ void umaskCommand(char * mask) {
  * Executes the jobs command
  */
 void jobsCommand() {
-    int i, j;
-    pid_t pid;
-    char * status;
+    int i, count = 0;
+    char * status = "Running";
 
     for (i = 0; i < MAX_COMMANDS; i++) {
-        if (jobs[i]->id != -1 && jobs[i]->status == 1) {
-            fprintf(stdout, "[%d] %s\t %s\n", jobs[i]->id, status, jobs[i]->command);
+        if (jobs[i]->id != -1) {
+            count++;
+            if (jobs[i]->status == 0) status = "Stopped";
+            else status = "Running";
+
+            fprintf(stdout, "[%d] %s\t %s\n", bgJobs, status, jobs[i]->command);
+        }
+
+    }
+}
+
+/**
+ * Executes the bg command
+ * 
+ * @param job_id Job ID to execute
+*/
+void bgCommand(char * job_id) {
+    int i, j, id;
+    pid_t pid;
+
+    // Selecte target job_id
+    if (job_id == NULL) id = stoppedJobs[lastStoppedJob];
+    else id = atoi(job_id);
+    
+    // Search for the job by id and send SIGCONT to all processes
+    for (i = 0; i < MAX_COMMANDS; i++) {
+        if (jobs[i]->id == id) {
+            jobs[i]->status = 1;
+            jobs[i]->line->background = 1;
+
+            for (j = 0; j < jobs[i]->line->ncommands; j++) {
+                pid = jobs[i]->pids[j];
+                kill(pid, SIGCONT);
+            }
         }
     }
 }
+
 
 /**
  * Executes an external command from a parsed line
@@ -328,6 +397,13 @@ int externalCommand(tline * line, char* command) {
     // Check error when adding job
     if (current == -1) return -1;
 
+    // Update background jobs count and print job id
+    if (line->background == 1) {
+        bgJobs++;
+        fprintf(stdout, "[%d] %d\n", bgJobs, jobs[current]->id);
+    }
+
+
     // Initialize pipes
     for (i = 0; i < line->ncommands - 1; i++) {
         if (pipe(jobs[current]->pipes[i]) < 0) {
@@ -340,9 +416,9 @@ int externalCommand(tline * line, char* command) {
     for (i = 0; i < line->ncommands; i++) {
         pid = fork();
         jobs[current]->pids[i] = pid;
+        jobs[current]->status = 1;
 
         if (pid == 0) {
-    
             // Redirect input and output
             redirectIO(jobs[current], i);
 
@@ -350,7 +426,7 @@ int externalCommand(tline * line, char* command) {
             execvp(line->commands[i].filename, line->commands[i].argv);
             fprintf(stderr,"Error: execvp failed");
             exit(EXIT_FAILURE);
-            
+
         } else if (pid < 0) {
             fprintf(stderr, "Error: fork failed\n");
             exit(EXIT_FAILURE);
@@ -363,6 +439,7 @@ int externalCommand(tline * line, char* command) {
         close(jobs[current]->pipes[i][1]);
     }
 
+    // Wait for children
     for (i = 0; i < line->ncommands; i++) {
         pid = jobs[current]->pids[i];
 
@@ -383,7 +460,7 @@ int externalCommand(tline * line, char* command) {
  */
 void initializeJob(tjob * job) {
     job->id = -1;
-    job->status = 0;
+    job->status = -1;
     job->line = NULL;
     job->pids = (pid_t *) malloc(sizeof(pid_t));
     job->pipes = (int **) malloc(sizeof(int *));
@@ -400,10 +477,12 @@ int addJob(tline * line, char * command) {
     int i, j, updated = 0;
 
     for (i = 0; i < MAX_COMMANDS; i++) {
-        if (jobs[i]->id == -1 || jobs[i]->status == 0) {
-            jobs[i]->id = count++;
+        if (jobs[i]->id == -1) {
+            count++;
+
+            jobs[i]->id = count;
             jobs[i]->line = line;
-            jobs[i]->command = command;
+            jobs[i]->command = strdup(command);
             jobs[i]->status = 1;
             jobs[i]->pids = (pid_t *) realloc(jobs[i]->pids, sizeof(pid_t) * line->ncommands);
             jobs[i]->pipes = (int **) realloc(jobs[i]->pipes, sizeof(int *) * (line->ncommands - 1));
@@ -435,17 +514,25 @@ int addJob(tline * line, char * command) {
  * @param sig Signal number
  */
 void ctrlC(int sig) {
-    int i, j;
+    int i, runningJobIndex;
     pid_t pid;
 
-    for (i = 0; i < MAX_COMMANDS; i++) {
-        if (jobs[i]->id != -1 && jobs[i]->line->background == 0) {
-            for (j = 0; j < jobs[i]->line->ncommands; j++) {
-                pid = jobs[i]->pids[j];
-                kill(pid, SIGKILL);
-            }
-        }
+    // Get the index of the running job
+    runningJobIndex = getRunningJobIndex();
+
+    // Return if no job is running
+    if (runningJobIndex == -1) return;
+
+    if (DEBUG_MODE) fprintf(stdout, "Terminating job [%d]\n", jobs[runningJobIndex]->id);
+
+    // Send SIGINT to all processes in the job
+    for (i = 0; i < jobs[runningJobIndex]->line->ncommands; i++) {
+        pid = jobs[runningJobIndex]->pids[i];
+        kill(pid, SIGINT);
     }
+
+    // Print message
+    fprintf(stdout, "Killed [%d]\t %s\n", jobs[runningJobIndex]->id, jobs[runningJobIndex]->command);
 }
 
 /**
@@ -454,19 +541,106 @@ void ctrlC(int sig) {
  * @param sig Signal number
  */
 void ctrlZ(int sig){
-    int i, j, count = 0;
+    int i;
+    int runningJobIndex = -1;
     pid_t pid;
 
+    // SGet the index of the running job
+    runningJobIndex = getRunningJobIndex();
+
+    // Return if no job is running
+    if (runningJobIndex == -1) return;
+
+    // Update stopped job list
+    lastStoppedJob++;
     for (i = 0; i < MAX_COMMANDS; i++) {
-        if (jobs[i]->id != -1 && jobs[i]->line->background == 0) {
-            count++;
-            jobs[i]->line->background = 1;
-            fprintf(stdout, "\n[%d]+ Stopped\t %s\n", count, jobs[i]->command);
-            for (j = 0; j < jobs[i]->line->ncommands; j++) {
-                pid = jobs[i]->pids[j];
-                kill(pid, SIGSTOP);
-            }
-            
+        if (stoppedJobs[i] == -1) {
+            stoppedJobs[i] = runningJobIndex;
+            break;
         }
     }
+    
+    // Print stopped job
+    fprintf(stdout, "\n[%d]+ Stopped\t %s\n", count, jobs[runningJobIndex]->command);
+
+    // Update stopped jobs array
+    for (i = 0; i < MAX_COMMANDS; i++) {
+        if (stoppedJobs[i] == -1) {
+            stoppedJobs[i] = runningJobIndex;
+            break;
+        }
+    }
+
+    // Send SIGTSTP to all processes in the job
+    for (i = 0 ; i < jobs[runningJobIndex]->line->ncommands; i++) {
+        pid = jobs[runningJobIndex]->pids[i];
+        kill(pid, SIGTSTP);
+    }
+}
+
+/**
+ * Handles the SIGCHLD signal (Child terminated)
+ * 
+ * @param sig Signal number
+ */
+void terminatedChildHandler(int sig) {
+    int i, j, status;
+    int all_terminated;
+    pid_t pid;
+
+    // Debug message
+    if (DEBUG_MODE) fprintf(stdout, "SIGCHLD received\n");
+
+    // Check for terminated jobs
+    for (i = 0; i < MAX_COMMANDS; i++) {
+
+        // Initialize flag for each job
+        all_terminated = 1;
+
+        if (jobs[i]->id != -1) {
+            for (j = 0; j < jobs[i]->line->ncommands; j++) {
+                pid = jobs[i]->pids[j];
+
+                // Check if the process has terminated
+                if (waitpid(pid, &status, WNOHANG) == 0) {
+                    all_terminated = 0;
+                }
+            }
+
+            if (all_terminated) {
+                // Debug message
+                if (DEBUG_MODE) fprintf(stdout, "All child processes for job [%d] have terminated.\n", jobs[i]->id);
+
+                // Update background jobs count if the job was running in the background
+                if (jobs[i]->line->background == 1) bgJobs--;
+
+                // Reset job so it can be used again
+                jobs[i]->id = -1;
+                jobs[i]->status = -1;
+            }
+        }
+    }
+}
+
+// =============================[ Utilities ]==============================
+
+/**
+ * Searches for the foreground job running at the moment.
+ * 
+ * @return Index of the job in the jobs array, -1 if no job is running
+*/
+int getRunningJobIndex() {
+    int i;
+
+    for (i = 0; i < MAX_COMMANDS; i++) {
+        if (jobs[i]->id != -1) {
+            printf("Job: %d --> Bg: %d\n", jobs[i]->id, jobs[i]->line->background);
+            if (jobs[i]->line->background == 0) continue;
+
+            printf("Bg: %d\n", jobs[i]->line->background);
+            if (jobs[i]->status == 1) return i;
+        }
+    }
+
+    return -1;
 }
