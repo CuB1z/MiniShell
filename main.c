@@ -38,6 +38,7 @@ typedef struct {
     pid_t * pids;
     int ** pipes;
     char * command;
+    int background;
 } tjob;
 
 // ===========================[ Prototypes ]==========================
@@ -347,7 +348,7 @@ void jobsCommand() {
             if (jobs[i]->status == 0) status = "Stopped";
             else status = "Running";
 
-            fprintf(stdout, "[%d] %s\t %s\n", bgJobs, status, jobs[i]->command);
+            fprintf(stdout, "[%d] %s\t %s\n", count, status, jobs[i]->command);
         }
 
     }
@@ -370,7 +371,7 @@ void bgCommand(char * job_id) {
     for (i = 0; i < MAX_COMMANDS; i++) {
         if (jobs[i]->id == id) {
             jobs[i]->status = 1;
-            jobs[i]->line->background = 1;
+            jobs[i]->background = 1;
 
             for (j = 0; j < jobs[i]->line->ncommands; j++) {
                 pid = jobs[i]->pids[j];
@@ -389,6 +390,7 @@ void bgCommand(char * job_id) {
  */
 int externalCommand(tline * line, char* command) {
     int i, current;
+    int status;
     pid_t pid;
 
     // Add job to the jobs array
@@ -449,9 +451,19 @@ int externalCommand(tline * line, char* command) {
         pid = jobs[current]->pids[i];
 
         if (line->background == 0) {
-            waitpid(pid, NULL, WUNTRACED);
+            waitpid(pid, &status, WUNTRACED);
         } else {
-            waitpid(pid, NULL, WNOHANG);
+            waitpid(pid, &status, WNOHANG);
+        }
+
+        // Check if the process was stopped
+        if (WIFSTOPPED(status)) {
+            jobs[current]->status = 0;
+        }
+
+        // Check if the process was terminated or killed
+        if (WIFEXITED(status) || WIFSIGNALED(status)) {
+            jobs[current]->status = -1;
         }
     }
     
@@ -491,6 +503,7 @@ int addJob(tline * line, char * command) {
             jobs[i]->status = 1;
             jobs[i]->pids = (pid_t *) realloc(jobs[i]->pids, sizeof(pid_t) * line->ncommands);
             jobs[i]->pipes = (int **) realloc(jobs[i]->pipes, sizeof(int *) * (line->ncommands - 1));
+            jobs[i]->background = line->background;
 
             // Allocate memory for pipes
             for (j = 0; j < line->ncommands - 1; j++) {
@@ -533,6 +546,7 @@ void ctrlC(int sig) {
     // Send SIGINT to all processes in the job
     for (i = 0; i < jobs[runningJobIndex]->line->ncommands; i++) {
         pid = jobs[runningJobIndex]->pids[i];
+        fprintf(stdout, "Sending SIGINT to PID: %d\n", pid);
         kill(pid, SIGINT);
     }
 
@@ -548,7 +562,7 @@ void ctrlC(int sig) {
 void ctrlZ(int sig){
     int i;
     int runningJobIndex = -1;
-    pid_t pid;
+    // pid_t pid;
 
     // Get the index of the running job
     runningJobIndex = getRunningJobIndex();
@@ -579,10 +593,10 @@ void ctrlZ(int sig){
     }
 
     // Send SIGTSTP to all processes in the job
-    for (i = 0 ; i < jobs[runningJobIndex]->line->ncommands; i++) {
-        pid = jobs[runningJobIndex]->pids[i];
-        kill(pid, SIGTSTP);
-    }
+    // for (i = 0 ; i < jobs[runningJobIndex]->line->ncommands; i++) {
+    //     pid = jobs[runningJobIndex]->pids[i];
+    //     kill(pid, SIGTSTP);
+    // }
 }
 
 /**
@@ -605,6 +619,8 @@ void terminatedChildHandler(int sig) {
         all_terminated = 1;
 
         if (jobs[i]->id != -1) {
+            if (jobs[i]->background == 1) continue;
+
             for (j = 0; j < jobs[i]->line->ncommands; j++) {
                 pid = jobs[i]->pids[j];
 
@@ -619,7 +635,7 @@ void terminatedChildHandler(int sig) {
                 if (DEBUG_MODE) fprintf(stdout, "All child processes for job [%d] have terminated.\n", jobs[i]->id);
 
                 // Update background jobs count if the job was running in the background
-                if (jobs[i]->line->background == 1) bgJobs--;
+                if (jobs[i]->background == 1) bgJobs--;
 
                 // Reset job so it can be used again
                 jobs[i]->id = -1;
@@ -642,7 +658,7 @@ int getRunningJobIndex() {
     for (i = 0; i < MAX_COMMANDS; i++) {
         if (jobs[i]->id != -1) {
             // Skip background jobs and return if the job is running
-            if (jobs[i]->line->background == 0) {
+            if (jobs[i]->background == 0) {
                 if (jobs[i]->status == 1) return i;
             }
         }
