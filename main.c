@@ -65,6 +65,7 @@ void terminatedChildHandler(int sig);
 int getRunningJobIndex();
 void sortJobsById(tjob * jobs[]);
 int compareJobs(const void * a, const void * b);
+int getLastStoppedJobId();
 
 // ========================[ Global Variables ]=======================
 tjob * jobs[MAX_COMMANDS];
@@ -369,7 +370,7 @@ void bgCommand(char * job_id) {
     pid_t pid;
 
     // Selecte target job_id
-    if (job_id == NULL) id = stoppedJobs[lastStoppedJob];
+    if (job_id == NULL) id = getLastStoppedJobId();
     else id = atoi(job_id);
     
     // Search for the job by id and send SIGCONT to all processes
@@ -382,6 +383,7 @@ void bgCommand(char * job_id) {
                 pid = jobs[i]->pids[j];
                 kill(pid, SIGCONT);
             }
+            break;
         }
     }
 }
@@ -565,43 +567,16 @@ void ctrlC(int sig) {
  * @param sig Signal number
  */
 void ctrlZ(int sig){
-    int i;
     int runningJobIndex = -1;
-    pid_t pid;
 
     // Get the index of the running job
     runningJobIndex = getRunningJobIndex();
 
     // Return if no job is running
     if (runningJobIndex == -1) return;
-
-    // Update stopped job list
-    lastStoppedJob++;
-    for (i = 0; i < MAX_COMMANDS; i++) {
-        if (stoppedJobs[i] == -1) {
-            stoppedJobs[i] = runningJobIndex;
-            break;
-        }
-    }
-
-    printf("%d", runningJobIndex);
     
     // Print stopped job
     fprintf(stdout, "\n[%d]+ Stopped\t %s\n", count, jobs[runningJobIndex]->command);
-
-    // Update stopped jobs array
-    for (i = 0; i < MAX_COMMANDS; i++) {
-        if (stoppedJobs[i] == -1) {
-            stoppedJobs[i] = runningJobIndex;
-            break;
-        }
-    }
-
-    // Send SIGTSTP to all processes in the job
-    for (i = 0 ; i < jobs[runningJobIndex]->line->ncommands; i++) {
-        pid = jobs[runningJobIndex]->pids[i];
-        kill(pid, SIGTSTP);
-    }
 }
 
 /**
@@ -671,6 +646,23 @@ int getRunningJobIndex() {
 
     return -1;
 }
+
+int getLastStoppedJobId(){
+    int i;
+
+    sortJobsById(jobs);
+
+    for (i = MAX_COMMANDS-1; i >= 0; i--) {
+        if (jobs[i]->id != -1) {            
+            if (jobs[i]->status == 0) return jobs[i]->id;
+        }
+    }
+
+    return -1;
+
+}
+
+
 
 void sortJobsById(tjob * jobs[]){
     qsort(jobs, MAX_COMMANDS, sizeof(tjob *), compareJobs);
