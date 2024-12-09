@@ -63,6 +63,8 @@ void terminatedChildHandler(int sig);
 
 // Utilities
 int getRunningJobIndex();
+void sortJobsById(tjob * jobs[]);
+int compareJobs(const void * a, const void * b);
 
 // ========================[ Global Variables ]=======================
 tjob * jobs[MAX_COMMANDS];
@@ -342,6 +344,9 @@ void jobsCommand() {
     int i, count = 0;
     char * status = "Running";
 
+    // Sort jobs by id
+    sortJobsById(jobs);
+    
     for (i = 0; i < MAX_COMMANDS; i++) {
         if (jobs[i]->id != -1) {
             count++;
@@ -562,7 +567,7 @@ void ctrlC(int sig) {
 void ctrlZ(int sig){
     int i;
     int runningJobIndex = -1;
-    // pid_t pid;
+    pid_t pid;
 
     // Get the index of the running job
     runningJobIndex = getRunningJobIndex();
@@ -593,10 +598,10 @@ void ctrlZ(int sig){
     }
 
     // Send SIGTSTP to all processes in the job
-    // for (i = 0 ; i < jobs[runningJobIndex]->line->ncommands; i++) {
-    //     pid = jobs[runningJobIndex]->pids[i];
-    //     kill(pid, SIGTSTP);
-    // }
+    for (i = 0 ; i < jobs[runningJobIndex]->line->ncommands; i++) {
+        pid = jobs[runningJobIndex]->pids[i];
+        kill(pid, SIGTSTP);
+    }
 }
 
 /**
@@ -665,4 +670,19 @@ int getRunningJobIndex() {
     }
 
     return -1;
+}
+
+void sortJobsById(tjob * jobs[]){
+    qsort(jobs, MAX_COMMANDS, sizeof(tjob *), compareJobs);
+}
+
+int compareJobs(const void * a, const void * b) {
+    tjob * jobA = *(tjob **) a;
+    tjob * jobB = *(tjob **) b;
+
+    // Jobs with id -1 are considered greater than any other job
+    if (jobA->id == -1) return 1;
+    if (jobB->id == -1) return -1;
+
+    return jobA->id - jobB->id;
 }
