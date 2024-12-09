@@ -415,10 +415,15 @@ int externalCommand(tline * line, char* command) {
     // Create children
     for (i = 0; i < line->ncommands; i++) {
         pid = fork();
+
         jobs[current]->pids[i] = pid;
         jobs[current]->status = 1;
 
         if (pid == 0) {
+            // Custom Signals
+            signal(SIGTSTP, SIG_DFL);
+            signal(SIGINT, SIG_DFL);
+
             // Redirect input and output
             redirectIO(jobs[current], i);
 
@@ -444,7 +449,7 @@ int externalCommand(tline * line, char* command) {
         pid = jobs[current]->pids[i];
 
         if (line->background == 0) {
-            waitpid(pid, NULL, 0);
+            waitpid(pid, NULL, WUNTRACED);
         } else {
             waitpid(pid, NULL, WNOHANG);
         }
@@ -523,7 +528,7 @@ void ctrlC(int sig) {
     // Return if no job is running
     if (runningJobIndex == -1) return;
 
-    if (DEBUG_MODE) fprintf(stdout, "Terminating job [%d]\n", jobs[runningJobIndex]->id);
+    if (DEBUG_MODE) fprintf(stdout, "Terminating job [%d] - %s\n", jobs[runningJobIndex]->id, jobs[runningJobIndex]->command);
 
     // Send SIGINT to all processes in the job
     for (i = 0; i < jobs[runningJobIndex]->line->ncommands; i++) {
@@ -545,7 +550,7 @@ void ctrlZ(int sig){
     int runningJobIndex = -1;
     pid_t pid;
 
-    // SGet the index of the running job
+    // Get the index of the running job
     runningJobIndex = getRunningJobIndex();
 
     // Return if no job is running
@@ -559,6 +564,8 @@ void ctrlZ(int sig){
             break;
         }
     }
+
+    printf("%d", runningJobIndex);
     
     // Print stopped job
     fprintf(stdout, "\n[%d]+ Stopped\t %s\n", count, jobs[runningJobIndex]->command);
@@ -634,11 +641,10 @@ int getRunningJobIndex() {
 
     for (i = 0; i < MAX_COMMANDS; i++) {
         if (jobs[i]->id != -1) {
-            printf("Job: %d --> Bg: %d\n", jobs[i]->id, jobs[i]->line->background);
-            if (jobs[i]->line->background == 0) continue;
-
-            printf("Bg: %d\n", jobs[i]->line->background);
-            if (jobs[i]->status == 1) return i;
+            // Skip background jobs and return if the job is running
+            if (jobs[i]->line->background == 0) {
+                if (jobs[i]->status == 1) return i;
+            }
         }
     }
 
