@@ -30,6 +30,7 @@
  * @param pids: Array of process IDs
  * @param pipes: Array of pipes
  * @param command: Command string
+ * @param background: Background flag (0: Foreground, 1: Background)
  */
 typedef struct {
     int id;
@@ -137,8 +138,6 @@ int main(int argc, char * argv[]) {
             externalCommand(line, buffer);
         }
     }
-
-
 
     // Free memory
     for (i = 0; i < MAX_COMMANDS; i++) {
