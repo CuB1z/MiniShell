@@ -207,9 +207,9 @@ void readLine(char * line, int max) {
     if (strstr(cwd, getenv("HOME")) != NULL) {
         len = strlen(getenv("HOME"));
         cwd += len;
-        customPrompt = "%s@msh: ~%s $> ";
+        customPrompt = "\033[1;32m%s@msh\033[0m: \033[1;34m~%s\033[0m $> ";
     } else {
-        customPrompt = "%s@msh: %s $> ";
+        customPrompt = "\033[1;32m%s@msh\033[0m: \033[1;34m%s\033[0m $> ";
     }
 
     // Print custom prompt
