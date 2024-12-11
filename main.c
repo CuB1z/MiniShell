@@ -120,7 +120,7 @@ int main(int argc, char * argv[]) {
             if (allowExit == 1) break;
 
             // If there are stopped jobs, warn the user
-            if (bgJobs > 0) {
+            if (stoppedJobs > 0) {
                 fprintf(stdout, "There are stopped jobs.\n");
                 allowExit = 1;
             } else break;
@@ -141,6 +141,9 @@ int main(int argc, char * argv[]) {
 
     // Free memory
     for (i = 0; i < MAX_COMMANDS; i++) {
+        free(jobs[i]->pids);
+        free(jobs[i]->pipes);
+        free(jobs[i]->command);
         free(jobs[i]);
     }
 
