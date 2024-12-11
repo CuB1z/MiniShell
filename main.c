@@ -11,7 +11,7 @@
 
 // ===========================[ Constants ]===========================
 #define MAX_LINE 80
-#define MAX_COMMANDS 5
+#define MAX_COMMANDS 20
 
 #ifdef DEBUG
     #define DEBUG_MODE 1
@@ -674,10 +674,22 @@ int getRunningJobIndex() {
     return -1;
 }
 
+/**
+ * Sorts the jobs array by job id
+ * 
+ * @param jobs Array of jobs to sort
+*/
 void sortJobsById(tjob * jobs[]){
     qsort(jobs, MAX_COMMANDS, sizeof(tjob *), compareJobs);
 }
 
+/**
+ * Compares two jobs by their id
+ * 
+ * @param a First job
+ * @param b Second job
+ * @return -1 if a < b, 1 if a > b
+*/
 int compareJobs(const void * a, const void * b) {
     tjob * jobA = *(tjob **) a;
     tjob * jobB = *(tjob **) b;
