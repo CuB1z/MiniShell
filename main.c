@@ -382,27 +382,29 @@ void bgCommand(char * job_id) {
         for (i = 0; i < MAX_COMMANDS; i++) {
             if (jobs[i]->id == lastStoppedJobId) {
                 found = 1;
-                id = jobs[i]->id;
-                jobs[i]->status = 1;
-                jobs[i]->background = 1;
-
-                // Update stopped jobs count
-                stoppedJobs--;
-
-                // Send SIGCONT to all processes in the job's process group
-                killpg(jobs[i]->pids[0], SIGCONT);
                 break;
             }
         }
 
     } else {
         i = atoi(job_id) - 1;
-        id = jobs[i]->id;
         found = 1;
     }
 
     // Return if the job was not found
     if (found == 0) return;
+
+    // Update background jobs and stopped jobs count
+    bgJobs++;
+    stoppedJobs--;
+
+    // Get job id and set new status and background flag
+    id = jobs[i]->id;
+    jobs[i]->status = 1;
+    jobs[i]->background = 1;
+
+    // Send SIGCONT to all processes in the job's process group
+    killpg(jobs[i]->pids[0], SIGCONT);
 
     // Add '&' to the command string
     len = strlen(jobs[i]->command);
