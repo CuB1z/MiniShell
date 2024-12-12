@@ -624,7 +624,7 @@ void ctrlZ(int sig){
  * @param sig Signal number
  */
 void terminatedChildHandler(int sig) {
-    int i, j, status;
+    int i, j;
     int all_terminated;
     pid_t pid;
 
@@ -639,7 +639,7 @@ void terminatedChildHandler(int sig) {
                 pid = jobs[i]->pids[j];
 
                 // Check if the process has terminated
-                if (waitpid(pid, &status, WNOHANG) == 0) {
+                if (waitpid(pid, NULL, WNOHANG) == 0) {
                     all_terminated = 0;
                 }
             }
