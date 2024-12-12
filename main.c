@@ -452,9 +452,6 @@ int externalCommand(tline * line, char* command) {
     for (i = 0; i < line->ncommands; i++) {
         pid = fork();
 
-        jobs[current]->pids[i] = pid;
-        jobs[current]->status = 1;
-
         if (DEBUG_MODE) fprintf(stdout, "PID: %d\n", pid);
 
         if (pid == 0) {
@@ -480,7 +477,11 @@ int externalCommand(tline * line, char* command) {
         } else {
             if (i == 0) setpgid(pid, pid);
             else setpgid(pid, jobs[current]->pids[0]);
+            
+            jobs[current]->pids[i] = pid;
+            jobs[current]->status = 1;
         }
+
     }
 
     // Close all pipes in the parent process
