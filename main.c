@@ -371,9 +371,8 @@ void jobsCommand() {
  * @param job_id Job ID to execute
 */
 void bgCommand(char * job_id) {
-    int i, j, id;
+    int i, id;
     int len, found = 0;
-    pid_t pid;
 
     // Sort jobs by id
     sortJobsById(jobs);
@@ -387,10 +386,11 @@ void bgCommand(char * job_id) {
                 jobs[i]->status = 1;
                 jobs[i]->background = 1;
 
-                for (j = 0; j < jobs[i]->line->ncommands; j++) {
-                    pid = jobs[i]->pids[j];
-                    kill(pid, SIGCONT);
-                }
+                // Update stopped jobs count
+                stoppedJobs--;
+
+                // Send SIGCONT to all processes in the job's process group
+                killpg(jobs[i]->pids[0], SIGCONT);
                 break;
             }
         }
@@ -455,7 +455,12 @@ int externalCommand(tline * line, char* command) {
         jobs[current]->pids[i] = pid;
         jobs[current]->status = 1;
 
+        if (DEBUG_MODE) fprintf(stdout, "PID: %d\n", pid);
+
         if (pid == 0) {
+            // Set the child process group ID to its own PID
+            setpgid(0, 0);
+
             // Set default signal handlers
             signal(SIGTSTP, SIG_DFL);
             signal(SIGINT, SIG_DFL);
@@ -471,6 +476,10 @@ int externalCommand(tline * line, char* command) {
         } else if (pid < 0) {
             fprintf(stderr, "Error: fork failed\n");
             exit(EXIT_FAILURE);
+
+        } else {
+            if (i == 0) setpgid(pid, pid);
+            else setpgid(pid, jobs[current]->pids[0]);
         }
     }
 
@@ -566,8 +575,7 @@ int addJob(tline * line, char * command) {
  * @param sig Signal number
  */
 void ctrlC(int sig) {
-    int i, runningJobIndex;
-    pid_t pid;
+    int runningJobIndex = -1;
 
     // Get the index of the running job
     runningJobIndex = getRunningJobIndex();
@@ -575,12 +583,10 @@ void ctrlC(int sig) {
     // Return if no job is running
     if (runningJobIndex == -1) return;
 
-    // Send SIGINT to all processes in the job
-    for (i = 0; i < jobs[runningJobIndex]->line->ncommands; i++) {
-        pid = jobs[runningJobIndex]->pids[i];
-        fprintf(stdout, "Sending SIGINT to PID: %d\n", pid);
-        kill(pid, SIGINT);
-    }
+    // Send SIGINT to all processes in the job's process group
+    if (DEBUG_MODE) fprintf(stdout, "Sending SIGINT to process group: %d\n", jobs[runningJobIndex]->pids[0]);
+    killpg(jobs[runningJobIndex]->pids[0], SIGINT);
+
 
     // Print message
     if (DEBUG_MODE) fprintf(stdout, "Killed [%d]\t %s\n", jobs[runningJobIndex]->id, jobs[runningJobIndex]->command);
@@ -600,6 +606,10 @@ void ctrlZ(int sig){
     // Return if no job is running
     if (runningJobIndex == -1) return;
 
+    // Send SIGTSTP to all processes in the job's process group
+    if (DEBUG_MODE) fprintf(stdout, "Sending SIGTSTP to process group: %d\n", jobs[runningJobIndex]->pids[0]);
+    killpg(jobs[runningJobIndex]->pids[0], SIGTSTP);
+
     // Update stopped jobs count and last stopped job id
     stoppedJobs++;
     lastStoppedJobId = jobs[runningJobIndex]->id;
@@ -617,9 +627,6 @@ void terminatedChildHandler(int sig) {
     int i, j, status;
     int all_terminated;
     pid_t pid;
-
-    // Debug message
-    if (DEBUG_MODE) fprintf(stdout, "SIGCHLD [%d] received\n", sig);
 
     // Check for terminated jobs
     for (i = 0; i < MAX_COMMANDS; i++) {
