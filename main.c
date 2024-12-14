@@ -76,6 +76,7 @@ int lastStoppedJobId = -1;
 int main(int argc, char * argv[]) {
     tline * line;
     int i, allowExit = 0;
+    int selectedJob = -1;
     char buffer[MAX_LINE];
 
     // Initialize jobs
@@ -104,19 +105,18 @@ int main(int argc, char * argv[]) {
         // DEBUG
         printDebugData(DEBUG_MODE, line);
 
-        // Check for user input errors or empty commands
-        if (isInputOk(line) == -1) {
+        // Check for user input, errors or empty commands
+        selectedJob = isInputOk(line);
+
+        if (selectedJob == -1) {
             fprintf(stderr, "Command Error: Command not found\n");
             continue;
-        } else if (isInputOk(line) == 0) {
+        } else if (selectedJob == 0) {
             continue;
         }
 
         // Handle commands
-        if (strcmp(line->commands[0].argv[0], "cd") == 0) {
-            changeDirectory(line->commands[0].argv[1]);
-
-        } else if (strcmp(line->commands[0].argv[0], "exit") == 0) {
+        if (selectedJob == 3) {
             if (allowExit == 1) break;
 
             // If there are stopped jobs, warn the user
@@ -124,19 +124,14 @@ int main(int argc, char * argv[]) {
                 fprintf(stdout, "There are stopped jobs.\n");
                 allowExit = 1;
             } else break;
-
-        } else if (strcmp(line->commands[0].argv[0], "umask") == 0) {
-            umaskCommand(line->commands[0].argv[1]);
-
-        } else if (strcmp(line->commands[0].argv[0], "jobs") == 0) {
-            jobsCommand();
-
-        } else if (strcmp(line->commands[0].argv[0], "bg") == 0) {
-            bgCommand(line->commands[0].argv[1]);
-
-        } else {
-            externalCommand(line, buffer);
         }
+
+        // Execute command
+        else if (selectedJob == 1) externalCommand(line, buffer);
+        else if (selectedJob == 2) changeDirectory(line->commands[0].argv[1]);
+        else if (selectedJob == 4) jobsCommand(line);
+        else if (selectedJob == 5) umaskCommand(line->commands[0].argv[1]);
+        else if (selectedJob == 6) bgCommand(line->commands[0].argv[1]);
     }
 
     // Free memory
@@ -260,6 +255,8 @@ void redirectIO(tjob * job, int i) {
  * 
  * @param line Parsed line to check
  * @return 1 if the line is correct, 0 if there are no commands, -1 if there's an error
+ *         2 if the command is cd, 3 if the command is exit, 4 if the command is jobs,
+ *         5 if the command is umask, 6 if the command is bg
  */
 int isInputOk(tline * line) {
     int i;
@@ -269,28 +266,28 @@ int isInputOk(tline * line) {
     }
 
     // Handle cd command
-    if (strcmp(line->commands[0].argv[0], "cd") == 0) {
-        return 1;
+    if (line->commands->filename == NULL && strcmp(line->commands[0].argv[0], "cd") == 0) {
+        return 2;
     }
 
     // Handle exit command
-    if (strcmp(line->commands[0].argv[0], "exit") == 0) {
-        return 1;
+    if (line->commands->filename == NULL && strcmp(line->commands[0].argv[0], "exit") == 0) {
+        return 3;
     }
 
     // Handle jobs command
-    if (strcmp(line->commands[0].argv[0], "jobs") == 0) {
-        return 1;
+    if (line->commands->filename == NULL && strcmp(line->commands[0].argv[0], "jobs") == 0) {
+        return 4;
     }
 
     // Handle umask command
-    if (strcmp(line->commands[0].argv[0], "umask") == 0) {
-        return 1;
+    if (line->commands->filename == NULL && strcmp(line->commands[0].argv[0], "umask") == 0) {
+        return 5;
     }
 
     // Handle bg command
-    if (strcmp(line->commands[0].argv[0], "bg") == 0) {
-        return 1;
+    if (line->commands->filename == NULL && strcmp(line->commands[0].argv[0], "bg") == 0) {
+        return 6;
     }
 
     // Handle external commands
@@ -422,6 +419,7 @@ void bgCommand(char * job_id) {
  * Executes an external command from a parsed line
  * 
  * @param line Parsed line to execute
+ * @param command Command string
  * @return 0 if successful, -1 if failed
  */
 int externalCommand(tline * line, char* command) {
