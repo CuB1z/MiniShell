@@ -51,8 +51,8 @@ void redirectIO(tjob * job, int i);
 int isInputOk(tline * line);
 int externalCommand(tline * line, char* command);
 int changeDirectory(char * path);
-void umaskCommand(char * mask);
-void jobsCommand();
+void umaskCommand(tline * line);
+void jobsCommand(tline * line);
 void bgCommand(char * job_id);
 void initializeJob(tjob * job);
 int addJob(tline * line, char * command);
@@ -130,7 +130,7 @@ int main(int argc, char * argv[]) {
         else if (selectedJob == 1) externalCommand(line, buffer);
         else if (selectedJob == 2) changeDirectory(line->commands[0].argv[1]);
         else if (selectedJob == 4) jobsCommand(line);
-        else if (selectedJob == 5) umaskCommand(line->commands[0].argv[1]);
+        else if (selectedJob == 5) umaskCommand(line);
         else if (selectedJob == 6) bgCommand(line->commands[0].argv[1]);
     }
 
@@ -320,30 +320,64 @@ int changeDirectory(char * path) {
 
 /**
  * Executes the umask command
- * @param mask Mask to set
+ * @param line Parsed line to execute
  */
-void umaskCommand(char * mask) {
+void umaskCommand(tline * line) {
     mode_t mode;
+    char * mask = NULL;
+
+    // Redirect IO to files if needed
+    if (line->redirect_input != NULL) freopen(line->redirect_input, "r", stdin);
+    if (line->redirect_output != NULL) freopen(line->redirect_output, "w", stdout);
+    if (line->redirect_error != NULL) freopen(line->redirect_error, "w", stderr);
+
+    // Get mask if provided in the command
+    if (line->commands[0].argc > 1) {
+        mask = line->commands[0].argv[1];
+    }
+
+    // Get mask from stdin if not provided and handle errors
+    if (mask == NULL && line->redirect_input != NULL) {
+        mask = (char *) malloc(5);
+        if (mask != NULL && fgets(mask, 5, stdin) == NULL) {
+            free(mask);
+            mask = NULL;
+        }
+    }
 
     // Output current mask if no mask is provided
     if (mask == NULL) {
         mode = umask(0);
         umask(mode);
         fprintf(stdout, "%04o\n", mode);
-
     // Set new mask if provided
     } else {
         mode = strtol(mask, NULL, 8);
         umask(mode);
     }
+
+    // Reset redirection to terminal (/dev/tty)
+    if (line->redirect_input != NULL) freopen("/dev/tty", "r", stdin);
+    if (line->redirect_output != NULL) freopen("/dev/tty", "w", stdout);
+    if (line->redirect_error != NULL) freopen("/dev/tty", "w", stderr);
+
+    // Free allocated memory
+    if (mask != NULL && line->redirect_input != NULL) free(mask);
 }
 
 /**
  * Executes the jobs command
+ * 
+ * @param line Parsed line to execute
  */
-void jobsCommand() {
+void jobsCommand(tline * line) {
     int i, count = 0;
     char * outputFormat;
+
+    // Redirect IO to files if needed
+    if (line->redirect_input != NULL) freopen(line->redirect_input, "r", stdin);
+    if (line->redirect_output != NULL) freopen(line->redirect_output, "w", stdout);
+    if (line->redirect_error != NULL) freopen(line->redirect_error, "w", stderr);
 
     // Sort jobs by id
     sortJobsById(jobs);
@@ -358,8 +392,12 @@ void jobsCommand() {
 
             fprintf(stdout, "[%d]  %s\t\t %s", count, outputFormat, jobs[i]->command);
         }
-
     }
+
+    // Reset redirection to terminal (/dev/tty)
+    if (line->redirect_input != NULL) freopen("/dev/tty", "r", stdin);
+    if (line->redirect_output != NULL) freopen("/dev/tty", "w", stdout);
+    if (line->redirect_error != NULL) freopen("/dev/tty", "w", stderr);
 }
 
 /**
