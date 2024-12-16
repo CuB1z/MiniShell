@@ -82,6 +82,13 @@ int main(int argc, char * argv[]) {
     // Initialize jobs
     for (i = 0; i < MAX_COMMANDS; i++) {
         jobs[i] = (tjob *) malloc(sizeof(tjob));
+
+        // Check for malloc errors
+        if (jobs[i] == NULL) {
+            fprintf(stderr, "Error: malloc failed\n");
+            exit(EXIT_FAILURE);
+        }
+
         initializeJob(jobs[i]);
     }
 
@@ -307,6 +314,7 @@ int isInputOk(tline * line) {
  * @return 0 if successful, -1 if failed
  */
 int changeDirectory(char * path) {
+    int res;
     char * dir;
 
     if (path == NULL) {
@@ -315,7 +323,13 @@ int changeDirectory(char * path) {
         dir = path;
     }
 
-    return chdir(dir);
+    res = chdir(dir);
+
+    if (res == -1) {
+        fprintf(stderr, "Error: Directory not found\n");
+    }
+
+    return res;
 }
 
 /**
@@ -339,6 +353,14 @@ void umaskCommand(tline * line) {
     // Get mask from stdin if not provided and handle errors
     if (mask == NULL && line->redirect_input != NULL) {
         mask = (char *) malloc(5);
+
+        // Check for malloc errors
+        if (mask == NULL) {
+            fprintf(stderr, "Error: malloc failed\n");
+            return;
+        }
+
+        // Get mask from stdin
         if (mask != NULL && fgets(mask, 5, stdin) == NULL) {
             free(mask);
             mask = NULL;
@@ -563,6 +585,12 @@ void initializeJob(tjob * job) {
     job->line = NULL;
     job->pids = (pid_t *) malloc(sizeof(pid_t));
     job->pipes = (int **) malloc(sizeof(int *));
+
+    // Check for malloc errors
+    if (job->pids == NULL || job->pipes == NULL) {
+        fprintf(stderr, "Error: malloc failed\n");
+        exit(EXIT_FAILURE);
+    }
 }
 
 /*
